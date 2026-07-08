@@ -1,6 +1,6 @@
 const express = require('express');
 const crypto = require('crypto');
-const { getDb } = require('../db/init');
+const { getBondById, getSlashesByBondId, addSlash, deactivateBond } = require('../db/init');
 const { error } = require('../utils/errors');
 
 const router = express.Router();
@@ -37,8 +37,7 @@ router.post('/slash', (req, res) => {
       return error(res, 400, 'proof must be a string if provided');
     }
 
-    const db = getDb();
-    const bond = db.prepare('SELECT * FROM bonds WHERE id = ?').get(bondId);
+    const bond = getBondById(bondId);
 
     if (!bond) {
       return error(res, 404, `No bond found with bond_id "${bondId}". Check the bond_id and try again.`);
@@ -47,9 +46,7 @@ router.post('/slash', (req, res) => {
       return error(res, 403, 'This bond is already fully slashed and deactivated.');
     }
 
-    const slashedSoFar = db
-      .prepare('SELECT COALESCE(SUM(amount), 0) AS total FROM slashes WHERE bond_id = ?')
-      .get(bondId).total;
+    const slashedSoFar = getSlashesByBondId(bondId).reduce((sum, s) => sum + s.amount, 0);
     const remaining = bond.amount - slashedSoFar;
 
     if (amount > remaining) {
@@ -63,14 +60,20 @@ router.post('/slash', (req, res) => {
     const slashId = crypto.randomUUID();
     const createdAt = new Date().toISOString();
 
-    db.prepare(
-      'INSERT INTO slashes (id, bond_id, slashed_by, amount, reason, proof, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)'
-    ).run(slashId, bondId, slashedBy, amount, reason, proof, createdAt);
+    addSlash({
+      id: slashId,
+      bond_id: bondId,
+      slashed_by: slashedBy,
+      amount,
+      reason,
+      proof,
+      created_at: createdAt
+    });
 
     const bondRemaining = remaining - amount;
     let bondDeactivated = false;
     if (bondRemaining <= 0) {
-      db.prepare('UPDATE bonds SET active = 0 WHERE id = ?').run(bondId);
+      deactivateBond(bondId);
       bondDeactivated = true;
     }
 

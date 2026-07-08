@@ -1,6 +1,6 @@
 const express = require('express');
 const crypto = require('crypto');
-const { getDb } = require('../db/init');
+const { addBond } = require('../db/init');
 const { error } = require('../utils/errors');
 const { calculateVerdict, getAgentStats } = require('../utils/verdict');
 
@@ -30,15 +30,19 @@ router.post('/stake', (req, res) => {
       return error(res, 400, 'reason must be a string if provided');
     }
 
-    const db = getDb();
     const bondId = crypto.randomUUID();
     const createdAt = new Date().toISOString();
 
-    db.prepare(
-      'INSERT INTO bonds (id, agent_id, amount, reason, created_at, active) VALUES (?, ?, ?, ?, ?, 1)'
-    ).run(bondId, agentId, amount, reason, createdAt);
+    addBond({
+      id: bondId,
+      agent_id: agentId,
+      amount,
+      reason,
+      created_at: createdAt,
+      active: 1
+    });
 
-    const stats = getAgentStats(db, agentId);
+    const stats = getAgentStats(agentId);
 
     return res.status(201).json({
       ok: true,
@@ -66,8 +70,7 @@ router.get('/stake/:agent_id', (req, res) => {
       return error(res, 400, 'agent_id is required in the URL path. Call GET /stake/{agent_id}.');
     }
 
-    const db = getDb();
-    const stats = getAgentStats(db, agentId);
+    const stats = getAgentStats(agentId);
 
     return res.status(200).json({
       ok: true,

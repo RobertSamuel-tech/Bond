@@ -1,49 +1,78 @@
 const path = require('path');
 const fs = require('fs');
-const Database = require('better-sqlite3');
 
-// BOND_DB_PATH lets tests point at a throwaway database file.
-const DB_PATH = process.env.BOND_DB_PATH || path.join(__dirname, 'bond.db');
+// BOND_DB_PATH lets tests point at a throwaway data file.
+const DB_PATH = process.env.BOND_DB_PATH || path.join(__dirname, 'data.json');
 
-let db = null;
+const DEFAULT_DATA = { bonds: [], slashes: [] };
 
 function initDb() {
-  if (db) return db;
-
-  fs.mkdirSync(path.dirname(DB_PATH), { recursive: true });
-  db = new Database(DB_PATH);
-  db.pragma('journal_mode = WAL');
-
-  db.exec(`
-    CREATE TABLE IF NOT EXISTS bonds (
-      id TEXT PRIMARY KEY,
-      agent_id TEXT NOT NULL,
-      amount INTEGER NOT NULL CHECK(amount > 0),
-      reason TEXT NOT NULL DEFAULT '',
-      created_at TEXT NOT NULL,
-      active INTEGER NOT NULL DEFAULT 1
-    );
-
-    CREATE TABLE IF NOT EXISTS slashes (
-      id TEXT PRIMARY KEY,
-      bond_id TEXT NOT NULL,
-      slashed_by TEXT NOT NULL,
-      amount INTEGER NOT NULL CHECK(amount > 0),
-      reason TEXT NOT NULL,
-      proof TEXT NOT NULL DEFAULT '',
-      created_at TEXT NOT NULL,
-      FOREIGN KEY (bond_id) REFERENCES bonds(id)
-    );
-
-    CREATE INDEX IF NOT EXISTS idx_bonds_agent_id ON bonds(agent_id);
-    CREATE INDEX IF NOT EXISTS idx_slashes_bond_id ON slashes(bond_id);
-  `);
-
-  return db;
+  if (!fs.existsSync(DB_PATH)) {
+    fs.mkdirSync(path.dirname(DB_PATH), { recursive: true });
+    fs.writeFileSync(DB_PATH, JSON.stringify(DEFAULT_DATA, null, 2));
+  }
 }
 
-function getDb() {
-  return initDb();
+function readData() {
+  initDb();
+  return JSON.parse(fs.readFileSync(DB_PATH, 'utf8'));
 }
 
-module.exports = { initDb, getDb, DB_PATH };
+function writeData(data) {
+  fs.writeFileSync(DB_PATH, JSON.stringify(data, null, 2));
+}
+
+// bondData: { id, agent_id, amount, reason, created_at, active }
+function addBond(bondData) {
+  const data = readData();
+  data.bonds.push(bondData);
+  writeData(data);
+  return bondData;
+}
+
+function getBondById(id) {
+  return readData().bonds.find((b) => b.id === id) || null;
+}
+
+function getBondsByAgent(agentId) {
+  return readData().bonds.filter((b) => b.agent_id === agentId);
+}
+
+// slashData: { id, bond_id, slashed_by, amount, reason, proof, created_at }
+function addSlash(slashData) {
+  const data = readData();
+  data.slashes.push(slashData);
+  writeData(data);
+  return slashData;
+}
+
+function getSlashesByBondId(bondId) {
+  return readData().slashes.filter((s) => s.bond_id === bondId);
+}
+
+function deactivateBond(id) {
+  const data = readData();
+  const bond = data.bonds.find((b) => b.id === id);
+  if (!bond) return null;
+  bond.active = 0;
+  writeData(data);
+  return bond;
+}
+
+// Distinct agent ids holding at least one active bond — the /leaderboard candidates.
+function getLeaderboardData() {
+  const data = readData();
+  return [...new Set(data.bonds.filter((b) => b.active === 1).map((b) => b.agent_id))];
+}
+
+module.exports = {
+  initDb,
+  DB_PATH,
+  addBond,
+  getBondById,
+  getBondsByAgent,
+  addSlash,
+  getSlashesByBondId,
+  deactivateBond,
+  getLeaderboardData
+};

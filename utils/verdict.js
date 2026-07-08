@@ -1,3 +1,5 @@
+const { getBondsByAgent, getSlashesByBondId } = require('../db/init');
+
 // Verdict strings are the primary trust signal agents read from this service.
 // Order of checks matters: it follows the spec in CLAUDE.md exactly.
 function calculateVerdict({ hasBonds, activeStake, slashCount, totalSlashed }) {
@@ -25,8 +27,8 @@ function calculateVerdict({ hasBonds, activeStake, slashCount, totalSlashed }) {
 // Aggregates everything the verdict and the /stake, /history, /leaderboard
 // responses need for one agent. active_stake counts what is still at risk:
 // active bond amounts minus slashes already taken out of them.
-function getAgentStats(db, agentId) {
-  const bonds = db.prepare('SELECT * FROM bonds WHERE agent_id = ?').all(agentId);
+function getAgentStats(agentId) {
+  const bonds = getBondsByAgent(agentId);
 
   if (bonds.length === 0) {
     return {
@@ -39,25 +41,22 @@ function getAgentStats(db, agentId) {
     };
   }
 
-  const slashTotals = db.prepare(`
-    SELECT COALESCE(SUM(s.amount), 0) AS total, COUNT(s.id) AS cnt
-    FROM slashes s
-    JOIN bonds b ON s.bond_id = b.id
-    WHERE b.agent_id = ?
-  `).get(agentId);
-
-  const activeSlashed = db.prepare(`
-    SELECT COALESCE(SUM(s.amount), 0) AS total
-    FROM slashes s
-    JOIN bonds b ON s.bond_id = b.id
-    WHERE b.agent_id = ? AND b.active = 1
-  `).get(agentId);
+  let totalSlashed = 0;
+  let slashCount = 0;
+  let activeSlashed = 0;
+  for (const bond of bonds) {
+    for (const slash of getSlashesByBondId(bond.id)) {
+      totalSlashed += slash.amount;
+      slashCount += 1;
+      if (bond.active === 1) activeSlashed += slash.amount;
+    }
+  }
 
   const totalStaked = bonds.reduce((sum, b) => sum + b.amount, 0);
   const activeBondAmount = bonds
     .filter((b) => b.active === 1)
     .reduce((sum, b) => sum + b.amount, 0);
-  const activeStake = Math.max(activeBondAmount - activeSlashed.total, 0);
+  const activeStake = Math.max(activeBondAmount - activeSlashed, 0);
   const stakingSince = bonds
     .map((b) => b.created_at)
     .sort()[0];
@@ -66,8 +65,8 @@ function getAgentStats(db, agentId) {
     hasBonds: true,
     totalStaked,
     activeStake,
-    totalSlashed: slashTotals.total,
-    slashCount: slashTotals.cnt,
+    totalSlashed,
+    slashCount,
     stakingSince
   };
 }

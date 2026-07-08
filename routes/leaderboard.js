@@ -1,5 +1,5 @@
 const express = require('express');
-const { getDb } = require('../db/init');
+const { getLeaderboardData } = require('../db/init');
 const { error } = require('../utils/errors');
 const { calculateVerdict, getAgentStats } = require('../utils/verdict');
 
@@ -15,16 +15,13 @@ router.get('/leaderboard', (req, res) => {
     let minStake = Number.parseInt(req.query.min_stake, 10);
     if (!Number.isInteger(minStake) || minStake < 0) minStake = 0;
 
-    const db = getDb();
-    const agents = db
-      .prepare('SELECT DISTINCT agent_id FROM bonds WHERE active = 1')
-      .all();
+    const agentIds = getLeaderboardData();
 
-    const leaders = agents
-      .map(({ agent_id }) => {
-        const stats = getAgentStats(db, agent_id);
+    const leaders = agentIds
+      .map((agentId) => {
+        const stats = getAgentStats(agentId);
         return {
-          agent_id,
+          agent_id: agentId,
           active_stake: stats.activeStake,
           slash_count: stats.slashCount,
           total_staked: stats.totalStaked,

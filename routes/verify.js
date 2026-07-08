@@ -1,6 +1,6 @@
 const express = require('express');
 const crypto = require('crypto');
-const { getDb } = require('../db/init');
+const { getBondById } = require('../db/init');
 const { error } = require('../utils/errors');
 
 const router = express.Router();
@@ -19,8 +19,7 @@ router.get('/verify/:bond_id', (req, res) => {
       return error(res, 400, 'bond_id is required in the URL path. Call GET /verify/{bond_id}.');
     }
 
-    const db = getDb();
-    const bond = db.prepare('SELECT * FROM bonds WHERE id = ?').get(bondId);
+    const bond = getBondById(bondId);
 
     if (!bond) {
       return error(res, 404, `No bond found with bond_id "${bondId}". Check the bond_id and try again.`);

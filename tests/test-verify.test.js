@@ -6,7 +6,7 @@ const { test, before, after } = require('node:test');
 const assert = require('node:assert');
 const crypto = require('node:crypto');
 const app = require('../server');
-const { getDb } = require('../db/init');
+const { getBondById } = require('../db/init');
 
 let server;
 let base;
@@ -48,7 +48,7 @@ test('GET /verify/:bond_id returns the documented SHA-256 hash', async () => {
   assert.match(body.hash, /^[0-9a-f]{64}$/);
   assert.strictEqual(typeof body.message, 'string');
 
-  const bond = getDb().prepare('SELECT * FROM bonds WHERE id = ?').get(bondId);
+  const bond = getBondById(bondId);
   const expected = crypto
     .createHash('sha256')
     .update(`${bond.id}:${bond.agent_id}:${bond.amount}:${bond.created_at}`)

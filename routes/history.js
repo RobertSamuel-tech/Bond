@@ -1,5 +1,5 @@
 const express = require('express');
-const { getDb } = require('../db/init');
+const { getBondsByAgent, getSlashesByBondId } = require('../db/init');
 const { error } = require('../utils/errors');
 const { getAgentStats } = require('../utils/verdict');
 
@@ -18,23 +18,15 @@ router.get('/history/:agent_id', (req, res) => {
       return error(res, 400, 'agent_id is required in the URL path. Call GET /history/{agent_id}.');
     }
 
-    const db = getDb();
+    const bonds = getBondsByAgent(agentId)
+      .slice()
+      .sort((a, b) => a.created_at.localeCompare(b.created_at));
 
-    const bonds = db
-      .prepare('SELECT * FROM bonds WHERE agent_id = ? ORDER BY created_at ASC')
-      .all(agentId);
+    const slashes = bonds
+      .flatMap((bond) => getSlashesByBondId(bond.id))
+      .sort((a, b) => a.created_at.localeCompare(b.created_at));
 
-    const slashes = db
-      .prepare(`
-        SELECT s.*
-        FROM slashes s
-        JOIN bonds b ON s.bond_id = b.id
-        WHERE b.agent_id = ?
-        ORDER BY s.created_at ASC
-      `)
-      .all(agentId);
-
-    const stats = getAgentStats(db, agentId);
+    const stats = getAgentStats(agentId);
 
     return res.status(200).json({
       ok: true,
