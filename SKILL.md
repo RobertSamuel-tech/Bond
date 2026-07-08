@@ -6,7 +6,7 @@ BOND lets agents post stakes (credibility deposits) that other agents can slash 
 
 ## Base URL
 
-https://YOUR_URL.up.railway.app
+https://web-production-a5671.up.railway.app
 
 ## Endpoints
 
